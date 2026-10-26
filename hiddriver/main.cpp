@@ -724,6 +724,77 @@ unsigned int __stdcall MappingManagerThreadProc(void* param){
 	return 0;
 }
 
+static const wchar_t* ControllerName(uint16_t vid, uint16_t pid) {
+	if (vid == 0x054C) {
+		switch (pid) {
+		case 0x0268: return L"DualShock 3";
+		case 0x05C4:
+		case 0x09CC: return L"DualShock 4";
+		case 0x0BA0: return L"DS4 Wireless Adapter";
+		case 0x0CE6: return L"DualSense";
+		case 0x0DF2: return L"DualSense Edge";
+		}
+	}
+	if (vid == 0x057E && pid == 0x2009)
+		return L"Switch Pro";
+	return L"Controle HID";
+}
+
+// Hold L1 + R1 on any connected controller to show which slots are connected.
+// Controllers the driver has seen but that failed to bind to XAM are bound again.
+unsigned int __stdcall StatusComboThreadProc(void* param) {
+	const int kHoldPolls = 10; // 10 * 50ms = 0.5s
+	int heldPolls = 0;
+	bool fired = false;
+
+	while (true) {
+		bool comboHeld = false;
+		for (int i = 0; i < 4; i++) {
+			if (connectedControllers[i].controllerDriver &&
+				connectedControllers[i].currentState.l1 &&
+				connectedControllers[i].currentState.r1) {
+				comboHeld = true;
+				break;
+			}
+		}
+
+		if (!comboHeld) {
+			heldPolls = 0;
+			fired = false;
+		}
+		else if (!fired && ++heldPolls >= kHoldPolls) {
+			fired = true;
+
+			int connected = 0;
+			static wchar_t msg[128];
+			for (int i = 0; i < 4; i++) {
+				Controller& ctl = connectedControllers[i];
+				if (!ctl.controllerDriver)
+					continue;
+				connected++;
+
+				// Bind again if the previous attempt to register with XAM failed
+				if (ctl.userIndex == 0xFF) {
+					uint8_t userIndex = 0xFF;
+					XamUserBindDeviceCallback(0xa7553952 + i, 0x0000000010000005 + i, 0, false, &userIndex);
+					ctl.userIndex = userIndex;
+				}
+
+				if (ctl.userIndex == 0xFF)
+					swprintf(msg, 128, L"Slot %d: %s - NAO registrado no XAM", i + 1, ControllerName(ctl.vendorId, ctl.productId));
+				else
+					swprintf(msg, 128, L"Slot %d: %s - conectado (Jogador %d)", i + 1, ControllerName(ctl.vendorId, ctl.productId), ctl.userIndex + 1);
+				XNotifyUI(XNOTIFYUI_CUSTOM, msg);
+			}
+
+			swprintf(msg, 128, L"Controles conectados: %d/4", connected);
+			XNotifyUI(XNOTIFYUI_CUSTOM, msg);
+		}
+		Sleep(50);
+	}
+	return 0;
+}
+
 unsigned int __stdcall MappingThreadProc(void* param) {
 	XNotifyUI(XNOTIFYUI_CUSTOM, L"Unknown controller connected. Starting mapping process...");
 	Controller* controller = (Controller*)param;
@@ -1604,6 +1675,7 @@ BOOL APIENTRY DllMain(HANDLE Handle, DWORD Reason, PVOID Reserved) {
 
 		// Start mapping manager thread
 		MakeThread((LPTHREAD_START_ROUTINE)MappingManagerThreadProc, nullptr);
+		MakeThread((LPTHREAD_START_ROUTINE)StatusComboThreadProc, nullptr);
 	}
 	return TRUE;
 }
