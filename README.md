@@ -11,8 +11,8 @@ Experimental on-console HID driver focussing on providing third party, non xinpu
 
 ## Current limitations
 - no rumble support
-- **(fork)** The L1 + R1 status combo is untested on real hardware. It can only report controllers that reached the driver, a controller that never enumerated over USB will not show up
-- **(fork)** Controller initialisation state is global, so two controllers enumerating at the exact same moment can interfere with each other. Plugging them in one at a time is safer
+- **(fork)** The L1 + R1 status combo was tested on a real console (retail dashboard 17559) with two controllers plugged in one after the other. It can only report controllers that reached the driver, a controller that never enumerated over USB will not show up
+- **(fork)** Controller initialisation state is global, so two controllers enumerating at the exact same moment (for example both already plugged in at boot) may interfere with each other. This case is untested, plugging them in one at a time is known to work
 
 ## Supported controllers
 - DualShock 4 (PS4 controller)
